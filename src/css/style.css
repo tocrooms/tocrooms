@@ -291,6 +291,41 @@ p {
     height: 100%;
 }
 
+.online-now-box ul {
+    list-style: none;
+    margin: 8px 0 0;
+    padding: 0;
+    border: 1px solid #a6b8d0;
+    background: #f8fbff;
+}
+
+.online-now-box li {
+    padding: 6px 10px;
+    border-bottom: 1px solid #d5e2f2;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.online-now-box li:last-child {
+    border-bottom: none;
+}
+
+.online-now-box ul.scrollable-online-list {
+    max-height: 58px;
+    overflow-y: auto;
+}
+
+.online-status {
+    color: #555;
+    font-size: 11px;
+}
+
+.online-empty {
+    color: #555;
+}
+
 footer {
     border-top: 1px solid #999;
     color: #333;
