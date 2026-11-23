@@ -5,7 +5,29 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
     let peer = null;
     let isHost = false;
 
+    function getRoomPlayerCount() {
+        return 1 + remotePlayers.size;
+    }
+
+    function pushCountToConnections(targetPeerId = null) {
+        if (!isHost) return;
+        const count = getRoomPlayerCount();
+        connections.forEach((conn) => {
+            if (!conn.open) return;
+            if (targetPeerId && conn.peer !== targetPeerId) return;
+            conn.send({
+                type: "player_count_response",
+                roomId: roomId,
+                count: count
+            });
+        });
+    }
+
     function notifyPlayersChange() {
+        if (isHost) {
+            pushCountToConnections();
+        }
+
         if (!onPlayersChange) return;
 
         const players = [
@@ -40,6 +62,7 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
             type: "player_state",
             username: localPlayer.username,
             colors: typeof getPlayerColors === "function" ? getPlayerColors() : null,
+            face: typeof getPlayerFace === "function" ? getPlayerFace() : "happy",
             x: localPlayer.mesh.position.x,
             y: localPlayer.mesh.position.y,
             z: localPlayer.mesh.position.z,
@@ -56,18 +79,30 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
     function handleMessage(fromPeerId, data) {
         if (!data || !data.type) return;
 
+        if (data.type === "get_player_count") {
+            if (isHost) {
+                pushCountToConnections(fromPeerId);
+            }
+            return;
+        }
+
         if (data.type === "player_state") {
             const senderId = data.peerId || fromPeerId;
             let remote = remotePlayers.get(senderId);
 
             if (!remote) {
-                remote = createRemotePlayer(scene, data.username, data.colors);
+                remote = createRemotePlayer(scene, data.username, data.colors, data.face);
                 remote.username = data.username || "Guest";
                 remotePlayers.set(senderId, remote);
                 notifyPlayersChange();
-            } else if (data.username && remote.username !== data.username) {
-                remote.username = data.username;
-                notifyPlayersChange();
+            } else {
+                if (data.username && remote.username !== data.username) {
+                    remote.username = data.username;
+                    notifyPlayersChange();
+                }
+                if (data.face && remote.mesh.userData.currentFace !== data.face) {
+                    setCharacterFace(remote.mesh, data.face);
+                }
             }
 
             remote.setState(data);
@@ -94,6 +129,9 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
 
         conn.on("open", () => {
             sendPlayerState(conn);
+            if (isHost) {
+                pushCountToConnections(conn.peer);
+            }
         });
 
         conn.on("data", (data) => {
@@ -107,6 +145,8 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
                 remote.remove();
                 remotePlayers.delete(conn.peer);
                 notifyPlayersChange();
+            } else if (isHost) {
+                pushCountToConnections();
             }
             if (isHost) {
                 broadcast({ type: "player_leave", peerId: conn.peer }, conn.peer);
@@ -133,6 +173,7 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
 
         hostPeer.on("open", () => {
             isHost = true;
+            notifyPlayersChange();
         });
 
         hostPeer.on("connection", (conn) => {
@@ -186,6 +227,7 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
             sendPlayerState();
         }
     }
+
     init();
     return { sync };
 }

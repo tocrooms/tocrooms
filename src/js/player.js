@@ -1,3 +1,42 @@
+const FACE_LIST = [
+    { id: "happy", name: "Happy Smile", file: "../images/happy.png" },
+    { id: "tongle", name: "Tongle smile", file: "../images/little-tongle.png" },
+    { id: "neutral", name: "Neutral face", file: "../images/neutral.png" },
+    { id: "no mouth", name: "No mouth", file: "../images/no-mouth.png" },
+    { id: "sad", name: "Sad Face", file: "../images/sad.png.png" },
+    { id: "surprice", name: "Surpeise Face", file: "../images/surprise.png" }
+];
+
+function getFaceImagePath(faceId) {
+    const face = FACE_LIST.find((f) => f.id === faceId) || FACE_LIST[0];
+    const inPagesFolder = window.location.pathname.includes("/pages/");
+    const prefix = inPagesFolder ? "../../" : "./";
+    return `${prefix}assets/faces/${face.file}`;
+}
+
+const faceTextureLoader = new THREE.TextureLoader();
+
+function createFaceTexture(faceId) {
+    const texture = faceTextureLoader.load(getFaceImagePath(faceId));
+    texture.needsUpdate = true;
+    return texture;
+}
+
+function getPlayerFace() {
+    return localStorage.getItem("tocrooms_player_face") || "classic";
+}
+
+function setCharacterFace(charGroup, faceId) {
+    if (!charGroup || !charGroup.userData || !charGroup.userData.faceMesh) return;
+    const faceMesh = charGroup.userData.faceMesh;
+    if (faceMesh.material.map) {
+        faceMesh.material.map.dispose();
+    }
+    faceMesh.material.map = createFaceTexture(faceId);
+    faceMesh.material.needsUpdate = true;
+    charGroup.userData.currentFace = faceId;
+}
+
 function createNameSprite(nameText) {
     const canvas = document.createElement("canvas");
     canvas.width = 512;
@@ -48,8 +87,9 @@ function getPlayerColors() {
     }
 }
 
-function buildCharacterMesh(username, customColors = null) {
+function buildCharacterMesh(username, customColors = null, customFace = null) {
     const colors = customColors || getPlayerColors();
+    const faceId = customFace || getPlayerFace();
     const charGroup = new THREE.Group();
 
     const leftLegMat = new THREE.MeshLambertMaterial({ color: colors.leftLeg });
@@ -84,6 +124,24 @@ function buildCharacterMesh(username, customColors = null) {
     head.position.set(0, 4.65, 0);
     charGroup.add(head);
 
+    const faceGeo = new THREE.SphereGeometry(
+        0.686,
+        24,
+        24,
+        Math.PI * 0.22,
+        Math.PI * 0.56,
+        Math.PI * 0.24,
+        Math.PI * 0.52
+    );
+    const faceMat = new THREE.MeshBasicMaterial({
+        map: createFaceTexture(faceId),
+        transparent: true,
+        depthWrite: false
+    });
+    const faceMesh = new THREE.Mesh(faceGeo, faceMat);
+    faceMesh.position.set(0, 4.65, 0);
+    charGroup.add(faceMesh);
+
     const nameTag = createNameSprite(username || "Guest");
     charGroup.add(nameTag);
 
@@ -95,12 +153,14 @@ function buildCharacterMesh(username, customColors = null) {
         leftLeg,
         rightLeg
     };
+    charGroup.userData.faceMesh = faceMesh;
+    charGroup.userData.currentFace = faceId;
 
     return charGroup;
 }
 
-function createRemotePlayer(scene, username, colors = null) {
-    const mesh = buildCharacterMesh(username, colors);
+function createRemotePlayer(scene, username, colors = null, face = null) {
+    const mesh = buildCharacterMesh(username, colors, face);
     mesh.position.set(0, 0, 0);
     scene.add(mesh);
     const targetPos = new THREE.Vector3(0, 0, 0);
@@ -112,6 +172,10 @@ function createRemotePlayer(scene, username, colors = null) {
         setState(data) {
             targetPos.set(data.x, data.y, data.z);
             targetRotY = data.rotY;
+
+            if (data.face && mesh.userData.currentFace !== data.face) {
+                setCharacterFace(mesh, data.face);
+            }
 
             if (!initialized) {
                 mesh.position.copy(targetPos);
@@ -133,25 +197,49 @@ function createRemotePlayer(scene, username, colors = null) {
     };
 }
 
-function createPlayer(scene) {
+function createPlayer(scene, initialSpawn = { x: 0, y: 0, z: 0 }) {
     const savedUser = localStorage.getItem("tocrooms_anon_id") || "Guest";
     const player = buildCharacterMesh(savedUser);
-    player.position.set(0, 0, 0);
+    const spawnPosition = new THREE.Vector3(
+        initialSpawn.x ?? 0,
+        initialSpawn.y ?? 0,
+        initialSpawn.z ?? 0
+    );
+
+    player.position.copy(spawnPosition);
     scene.add(player);
     const keys = {};
-
-    window.addEventListener("keydown", (e) => {
-        keys[e.code] = true;
-    });
-    window.addEventListener("keyup", (e) => {
-        keys[e.code] = false;
-    });
 
     let velocityY = 0;
     let isGrounded = true;
     const moveSpeed = 0.22;
     const gravity = -0.018;
     const jumpForce = 0.58;
+
+    function respawn() {
+        player.position.copy(spawnPosition);
+        player.rotation.y = 0;
+        velocityY = 0;
+        isGrounded = false;
+    }
+
+    function setSpawnPoint(x, y, z) {
+        spawnPosition.set(x, y, z);
+    }
+
+    window.addEventListener("keydown", (e) => {
+        keys[e.code] = true;
+
+        const tag = e.target && e.target.tagName;
+        const isTyping = tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
+        if (e.code === "KeyR" && !e.repeat && !isTyping) {
+            respawn();
+        }
+    });
+
+    window.addEventListener("keyup", (e) => {
+        keys[e.code] = false;
+    });
 
     function update(cameraYaw, checkCollisionsCallback) {
         const forward = new THREE.Vector3(
@@ -207,6 +295,8 @@ function createPlayer(scene) {
         mesh: player,
         username: savedUser,
         update,
+        respawn,
+        setSpawnPoint,
         setVelocityY: (v) => { velocityY = v; },
         setIsGrounded: (g) => { isGrounded = g; }
     };

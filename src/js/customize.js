@@ -209,7 +209,7 @@ const PALETTE_COLORS = [
   "#ffe0bd", "#f5cd30", "#ffd700", "#ffb347",
   
   "#fff8e1", "#ffecb3", "#ffe0b2", "#ffccbc", "#f8bbd0", "#e1bee7", "#d1c4e9",
-  "#c5cae9", "#bbdefb", "#b2ebf2", "#b2dfdb", "#e0f7fa", "#c8e6c9", "#f0f4c3",
+  "#c5cae9", "#bbdefb", "#b2ebf2", "#b2dfdb", "#c8e6c9", "#f0f4c3",
 
   "#ff69b4", "#da70d6", "#ba55d3", "#9370db", "#8a2be2",
   "#ff80ab", "#ff4081", "#f50057", "#c51162",
