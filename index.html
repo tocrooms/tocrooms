@@ -61,12 +61,19 @@
                 <section>
                     <h1>See Now</h1>
                     <nav aria-label="TocRooms Navigation">
-                    <ul>
-                        <li><a href="src/pages/maps.html">Explore all maps</a></li>
-                        <li><a href="src/pages/info.html">See about TocRooms and The Future</a></li>
-                        <li><a href="src/pages/news.html">See the news and future updates in TocRooms</a></li>
-                    </ul>
+                        <ul>
+                            <li><a href="src/pages/maps.html">Explore all maps</a></li>
+                            <li><a href="src/pages/info.html">See about TocRooms and The Future</a></li>
+                            <li><a href="src/pages/news.html">See the news and future updates in TocRooms</a></li>
+                        </ul>
                     </nav>
+                </section>
+
+                <section class="online-now-box">
+                    <h1>Online Now (<span id="onlineUsersCount">0</span>)</h1>
+                    <ul id="onlineUsersList">
+                        <li class="online-empty">Checking online players...</li>
+                    </ul>
                 </section>
             </div>
 
@@ -96,5 +103,7 @@
 
     </div>
     <script src="src/js/anonimus.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="src/js/online-users.js"></script>
 </body>
 </html>
