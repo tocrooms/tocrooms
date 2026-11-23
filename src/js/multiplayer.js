@@ -9,17 +9,26 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
         return 1 + remotePlayers.size;
     }
 
+    function getRoomPlayerNames() {
+        return [
+            localPlayer.username || "Guest",
+            ...Array.from(remotePlayers.values()).map((remote) => remote.username || "Guest")
+        ];
+    }
+
     function pushCountToConnections(targetPeerId = null) {
         if (!isHost) return;
-        const count = getRoomPlayerCount();
+        const payload = {
+            type: "player_count_response",
+            roomId: roomId,
+            count: getRoomPlayerCount(),
+            players: getRoomPlayerNames()
+        };
+
         connections.forEach((conn) => {
             if (!conn.open) return;
             if (targetPeerId && conn.peer !== targetPeerId) return;
-            conn.send({
-                type: "player_count_response",
-                roomId: roomId,
-                count: count
-            });
+            conn.send(payload);
         });
     }
 
