@@ -1,4 +1,4 @@
-function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "default") {
+function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "default", onMapSync = null) {
     const ROOM_HOST_ID = "tocrooms-" + roomId + "-host-v1";
     const remotePlayers = new Map();
     const connections = new Set();
@@ -67,15 +67,24 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
     }
 
     function sendPlayerState(targetConn = null) {
+        const moveState = typeof localPlayer.getMoveState === "function"
+            ? localPlayer.getMoveState()
+            : { isMoving: false, isGrounded: true, velocityY: 0 };
+
+        const winsCount = typeof getLocalWins === "function" ? getLocalWins() : 0;
+
         const payload = {
             type: "player_state",
             username: localPlayer.username,
             colors: typeof getPlayerColors === "function" ? getPlayerColors() : null,
-            face: typeof getPlayerFace === "function" ? getPlayerFace() : "happy",
+            wins: winsCount,
             x: localPlayer.mesh.position.x,
             y: localPlayer.mesh.position.y,
             z: localPlayer.mesh.position.z,
-            rotY: localPlayer.mesh.rotation.y
+            rotY: localPlayer.mesh.rotation.y,
+            isMoving: moveState.isMoving,
+            isGrounded: moveState.isGrounded,
+            velocityY: moveState.velocityY
         };
 
         if (targetConn) {
@@ -83,6 +92,24 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
         } else {
             broadcast(payload);
         }
+    }
+
+    function sendChatMessage(text) {
+        if (!text) return;
+        const payload = {
+            type: "player_chat",
+            peerId: peer ? peer.id : null,
+            text: text
+        };
+        broadcast(payload);
+    }
+
+    function sendMapSync(payload) {
+        if (!payload) return;
+        broadcast({
+            type: "lavamountain_sync",
+            ...payload
+        });
     }
 
     function handleMessage(fromPeerId, data) {
@@ -95,12 +122,22 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
             return;
         }
 
+        if (data.type === "lavamountain_sync") {
+            if (typeof onMapSync === "function") {
+                onMapSync(data);
+            }
+            if (isHost) {
+                broadcast(data, fromPeerId);
+            }
+            return;
+        }
+
         if (data.type === "player_state") {
             const senderId = data.peerId || fromPeerId;
             let remote = remotePlayers.get(senderId);
 
             if (!remote) {
-                remote = createRemotePlayer(scene, data.username, data.colors, data.face);
+                remote = createRemotePlayer(scene, data.username, data.colors, data.wins || 0);
                 remote.username = data.username || "Guest";
                 remotePlayers.set(senderId, remote);
                 notifyPlayersChange();
@@ -109,13 +146,22 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
                     remote.username = data.username;
                     notifyPlayersChange();
                 }
-                if (data.face && remote.mesh.userData.currentFace !== data.face) {
-                    setCharacterFace(remote.mesh, data.face);
-                }
             }
 
             remote.setState(data);
+            if (typeof remote.setWins === "function" && typeof data.wins === "number") {
+                remote.setWins(data.wins);
+            }
 
+            if (isHost && !data.peerId) {
+                broadcast({ ...data, peerId: fromPeerId }, fromPeerId);
+            }
+        } else if (data.type === "player_chat") {
+            const senderId = data.peerId || fromPeerId;
+            const remote = remotePlayers.get(senderId);
+            if (remote && data.text && typeof setSpeechBubble === "function") {
+                setSpeechBubble(remote.mesh, data.text);
+            }
             if (isHost && !data.peerId) {
                 broadcast({ ...data, peerId: fromPeerId }, fromPeerId);
             }
@@ -205,38 +251,46 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
     }
 
     let lastSent = 0;
+    let lastSyncFrameTime = performance.now();
     let prevX = localPlayer.mesh.position.x;
     let prevY = localPlayer.mesh.position.y;
     let prevZ = localPlayer.mesh.position.z;
     let prevRotY = localPlayer.mesh.rotation.y;
+    let prevWins = typeof getLocalWins === "function" ? getLocalWins() : 0;
 
     function sync() {
+        const now = performance.now();
+        const dt = Math.min(0.05, Math.max(0.001, (now - lastSyncFrameTime) / 1000));
+        lastSyncFrameTime = now;
+
         remotePlayers.forEach((remote) => {
-            remote.updateSmooth(0.28);
+            remote.updateSmooth(0.28, dt);
         });
 
         const x = localPlayer.mesh.position.x;
         const y = localPlayer.mesh.position.y;
         const z = localPlayer.mesh.position.z;
         const rotY = localPlayer.mesh.rotation.y;
+        const wins = typeof getLocalWins === "function" ? getLocalWins() : 0;
 
         const moved =
             Math.abs(x - prevX) > 0.001 ||
             Math.abs(y - prevY) > 0.001 ||
             Math.abs(z - prevZ) > 0.001 ||
-            Math.abs(rotY - prevRotY) > 0.001;
+            Math.abs(rotY - prevRotY) > 0.001 ||
+            wins !== prevWins;
 
-        const now = performance.now();
         if (moved && now - lastSent >= 16) {
             lastSent = now;
             prevX = x;
             prevY = y;
             prevZ = z;
             prevRotY = rotY;
+            prevWins = wins;
             sendPlayerState();
         }
     }
 
     init();
-    return { sync };
+    return { sync, sendChatMessage, sendMapSync, isHost: () => isHost };
 }
