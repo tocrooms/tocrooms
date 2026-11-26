@@ -257,6 +257,8 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
     let prevZ = localPlayer.mesh.position.z;
     let prevRotY = localPlayer.mesh.rotation.y;
     let prevWins = typeof getLocalWins === "function" ? getLocalWins() : 0;
+    let prevIsMoving = false;
+    let prevIsGrounded = true;
 
     function sync() {
         const now = performance.now();
@@ -273,20 +275,28 @@ function createMultiplayer(scene, localPlayer, onPlayersChange, roomId = "defaul
         const rotY = localPlayer.mesh.rotation.y;
         const wins = typeof getLocalWins === "function" ? getLocalWins() : 0;
 
+        const moveState = typeof localPlayer.getMoveState === "function"
+            ? localPlayer.getMoveState()
+            : { isMoving: false, isGrounded: true, velocityY: 0 };
+
         const moved =
             Math.abs(x - prevX) > 0.001 ||
             Math.abs(y - prevY) > 0.001 ||
             Math.abs(z - prevZ) > 0.001 ||
             Math.abs(rotY - prevRotY) > 0.001 ||
-            wins !== prevWins;
+            wins !== prevWins ||
+            moveState.isMoving !== prevIsMoving ||
+            moveState.isGrounded !== prevIsGrounded;
 
-        if (moved && now - lastSent >= 16) {
+        if (moved || now - lastSent >= 100) {
             lastSent = now;
             prevX = x;
             prevY = y;
             prevZ = z;
             prevRotY = rotY;
             prevWins = wins;
+            prevIsMoving = moveState.isMoving;
+            prevIsGrounded = moveState.isGrounded;
             sendPlayerState();
         }
     }

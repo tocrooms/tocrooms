@@ -280,11 +280,11 @@ function createRemotePlayer(scene, username, colors = null, initialWins = 0) {
             while (diff < -Math.PI) diff += Math.PI * 2;
             mesh.rotation.y += diff * smoothFactor;
 
-            const horizDist = Math.hypot(mesh.position.x - lastPos.x, mesh.position.z - lastPos.z);
+            const distToTarget = mesh.position.distanceTo(targetPos);
             const vertDelta = mesh.position.y - lastPos.y;
             const distToTargetY = Math.abs(targetPos.y - mesh.position.y);
 
-            const moving = targetIsMoving || horizDist / safeDt > 0.45;
+            const moving = targetIsMoving && distToTarget > 0.02;
             const grounded = distToTargetY < 0.06 && Math.abs(vertDelta) < 0.06 && targetIsGrounded;
             const velY = Math.abs(targetVelocityY) > 0.01 ? targetVelocityY : vertDelta / safeDt;
 
