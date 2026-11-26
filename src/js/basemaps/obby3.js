@@ -160,6 +160,58 @@ function createObbyMap(scene) {
     };
 }
 
+const STORAGE_KEY = "tocrooms_obby3_data";
+let stats = { wins: 0 };
+try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+    if (saved && typeof saved.wins === "number") stats = saved;
+} catch (e) {}
+
+function getLocalWins() {
+    return stats.wins;
+}
+
+function saveWins() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stats)); } catch (e) {}
+}
+
+let winsSprite = null;
+
+function createWinsSprite() {
+    const c = document.createElement("canvas");
+    c.width = 256;
+    c.height = 96;
+    const ctx = c.getContext("2d");
+    const tex = new THREE.CanvasTexture(c);
+    const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
+    sprite.scale.set(4.5, 1.7, 1);
+    sprite.position.set(0, 7.6, 0);
+
+    function draw(w) {
+        ctx.clearRect(0, 0, c.width, c.height);
+        ctx.font = "bold 42px Arial";
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 6;
+        ctx.strokeText("Wins: " + w, 128, 60);
+        ctx.fillText("Wins: " + w, 128, 60);
+        tex.needsUpdate = true;
+    }
+
+    draw(stats.wins);
+    return { sprite, draw };
+}
+
+function adjustNameTag(mesh) {
+    if (!mesh) return;
+    mesh.traverse((child) => {
+        if (child.isSprite && child !== (winsSprite && winsSprite.sprite)) {
+            child.position.y = 4.6;
+        }
+    });
+}
+
 function updatePlayerListUI(players) {
     const countEl = document.getElementById("playerCount");
     const listEl = document.getElementById("playerList");
@@ -203,10 +255,31 @@ scene.add(dirLight);
 
 const obby = createObbyMap(scene);
 const player = createPlayer(scene);
+
+if (player && player.mesh) {
+    winsSprite = createWinsSprite();
+    player.mesh.add(winsSprite.sprite);
+    adjustNameTag(player.mesh);
+}
+
 const cameraController = createCameraController(camera);
 const multiplayer = createMultiplayer(scene, player, updatePlayerListUI, "obby3");
 
 let activePlatform = null;
+let winLock = false;
+
+function handleWin() {
+    if (winLock) return;
+    winLock = true;
+    stats.wins += 1;
+    saveWins();
+    if (winsSprite) winsSprite.draw(stats.wins);
+    respawnPlayer();
+    if (multiplayer && typeof multiplayer.sync === "function") {
+        multiplayer.sync();
+    }
+    setTimeout(() => { winLock = false; }, 1000);
+}
 
 function respawnPlayer() {
     player.mesh.position.set(0, 2, 0);
@@ -262,7 +335,7 @@ function animate() {
 
     if (activePlatform) {
         if (activePlatform.isEnd) {
-            respawnPlayer();
+            handleWin();
         } else {
             if (activePlatform.deltaX) player.mesh.position.x += activePlatform.deltaX;
             if (activePlatform.deltaZ) player.mesh.position.z += activePlatform.deltaZ;
@@ -270,6 +343,7 @@ function animate() {
     }
 
     player.update(cameraController.getYaw(), checkObbyCollisions);
+    adjustNameTag(player.mesh);
 
     if (checkLavaTouch(player.mesh.position) || player.mesh.position.y < -20) {
         respawnPlayer();
